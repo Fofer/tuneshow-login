@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>TuneShow · Spotify login</title>
+<!--
+  Spotify only sends a login back to an HTTPS address, but TuneShow runs on an Apple TV at a
+  home-network address. This static page bridges the two: Spotify redirects here, and the page
+  forwards the browser to the Apple TV, whose address TuneShow put in the `state` parameter.
+
+  Nothing is stored or sent anywhere else. The page only forwards to private network addresses
+  (10.x, 172.16-31.x, 192.168.x), and the login code is useless without the PKCE verifier that
+  never leaves the Apple TV.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 17px/1.5 -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px 16px; }
+  .error { color: #e5484d; }
+</style>
+</head>
+<body>
+<h1>TuneShow</h1>
+<p id="msg">Returning to your Apple TV…</p>
+<noscript><p class="error">This page needs JavaScript to hand the login back to your Apple TV.</p></noscript>
+<script>
+(function () {
+  var msg = document.getElementById("msg");
+  function fail(text) { msg.textContent = text; msg.className = "error"; }
+
+  var params = new URLSearchParams(window.location.search);
+  var state = params.get("state");
+  if (!state) { fail("This page is part of TuneShow's Spotify login. Start from your Apple TV."); return; }
+
+  var target;
+  try {
+    var json = atob(state.replace(/-/g, "+").replace(/_/g, "/"));
+    target = JSON.parse(json).h;
+  } catch (e) {
+    fail("This login link isn't valid. Start again from your Apple TV.");
+    return;
+  }
+
+  // Only ever forward to an address on a home network.
+  var privateHost = /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d{2,5}$/;
+  if (typeof target !== "string" || !privateHost.test(target)) {
+    fail("This login link doesn't point to a device on a home network, so it was stopped.");
+    return;
+  }
+
+  var forward = new URLSearchParams();
+  ["code", "state", "error"].forEach(function (k) {
+    if (params.has(k)) forward.set(k, params.get(k));
+  });
+  window.location.replace("http://" + target + "/callback?" + forward.toString());
+  setTimeout(function () {
+    fail("Couldn't reach your Apple TV at " + target + ". Make sure this phone is on the same Wi-Fi network, then try again.");
+  }, 6000);
+})();
+</script>
+</body>
+</html>
